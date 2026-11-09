@@ -236,8 +236,18 @@ class ProgressController(
         domainStore.get(userId(request), "reward", workoutId, forUpdate = false)?.payload
             ?: throw ApiException(HttpStatus.NOT_FOUND, "REWARD_NOT_FOUND", "Reward not found")
 
-    private fun growthValue(userId: String): Int =
-        minOf(100, domainStore.list(userId, "workout").count { it.payload["status"] == "COMPLETED" } * 10)
+    private fun growthValue(userId: String): Int = minOf(
+        100,
+        domainStore.list(userId, "workout").sumOf { workout ->
+            val payload = workout.payload
+            if (payload["status"] != "COMPLETED") {
+                0
+            } else {
+                (payload["growthDelta"] as? Number)?.toInt()
+                    ?: if ((payload["sets"] as? List<*>)?.isNotEmpty() == true) 10 else 0
+            }
+        },
+    )
 
     private fun growthStage(growth: Int): String = when {
         growth >= 100 -> "Peak Form"
