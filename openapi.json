@@ -1252,7 +1252,7 @@
                 }
               }
             },
-            "description": "성공: {workoutId,status:IN_PROGRESS,routineSnapshot,currentExercise,startedAt}"
+            "description": "성공: {workoutId,status:IN_PROGRESS,routineSnapshot,currentExercise,startedAt,version}"
           },
           "400": {
             "content": {
@@ -1353,8 +1353,72 @@
           }
         ],
         "x-source-request": "Body: {routineId, startedAt, timezone}",
-        "x-source-response": "{workoutId,status:IN_PROGRESS,routineSnapshot,currentExercise,startedAt}",
+        "x-source-response": "{workoutId,status:IN_PROGRESS,routineSnapshot,currentExercise,startedAt,version}",
         "x-priority": "원본 WORKOUT-001 · P0 · MVP"
+      }
+    },
+    "/api/v1/workouts/active": {
+      "get": {
+        "tags": [
+          "WORKOUT"
+        ],
+        "summary": "진행 중인 운동 세션 복구",
+        "description": "인증된 사용자의 활성 세션 상태를 반환해 기존 workoutId와 version으로 운동을 이어간다.",
+        "operationId": "activeWorkout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "성공: {workoutId,status:IN_PROGRESS,routineSnapshot,currentExerciseIndex,sets,startedAt,version}"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "example": "UNAUTHORIZED"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "example": "ACTIVE_WORKOUT_NOT_FOUND"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "ACTIVE_WORKOUT_NOT_FOUND"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "x-source-request": "Query: 없음",
+        "x-source-response": "{workoutId,status:IN_PROGRESS,routineSnapshot,currentExerciseIndex,sets,startedAt,version}",
+        "x-priority": "Issue #10 · P0 · MVP"
       }
     },
     "/api/v1/workouts/{workoutId}/summary": {
@@ -1363,7 +1427,7 @@
           "REWARD"
         ],
         "summary": "운동 결과 요약 조회",
-        "description": "완료 운동의 시간·세트·볼륨·PR·Growth·XP와 후속 보상을 조회한다.",
+        "description": "완료 운동의 시간·세트·볼륨·PR·Growth·XP와 후속 보상을 조회한다. avatarGrowth 누적에는 기록 세트가 있는 완료 운동만 반영한다.",
         "operationId": "reward",
         "parameters": [
           {
@@ -1452,7 +1516,7 @@
           "REWARD"
         ],
         "summary": "운동 세션 완료",
-        "description": "마지막 세트 완료 후 종료 시각·볼륨·PR·XP·Growth를 확정한다.",
+        "description": "계획 세트를 모두 채우지 않아도 기록된 세트만 집계해 세션을 완료한다. 기록 세트가 있으면 XP는 세트당 10에 완료 보너스 50을 더하고 Growth는 10을 지급한다. 기록 세트가 없으면 세션은 저장하지만 totalSets·volume·XP·Growth는 0으로 처리하며, duration은 실제 경과 시간을 유지한다. expectedVersion이 현재 버전과 다르면 충돌을 반환한다.",
         "operationId": "reward",
         "parameters": [
           {
@@ -1474,7 +1538,7 @@
                 }
               }
             },
-            "description": "성공: {workoutId,status:COMPLETED,duration,totalSets,volume,prs,xp,growthDelta}"
+            "description": "성공: {workoutId,status:COMPLETED,duration,totalSets,volume,prs,xp,growthDelta}. 부분 완료는 기록 세트만 집계하고, 0세트 완료는 totalSets·volume·xp·growthDelta가 0이다."
           },
           "400": {
             "content": {
@@ -1483,14 +1547,14 @@
                   "properties": {
                     "code": {
                       "type": "string",
-                      "example": "WORKOUT_INCOMPLETE"
+                      "example": "VALIDATION_ERROR"
                     }
                   },
                   "type": "object"
                 }
               }
             },
-            "description": "WORKOUT_INCOMPLETE"
+            "description": "VALIDATION_ERROR: expectedVersion is required"
           },
           "401": {
             "content": {
@@ -1547,14 +1611,14 @@
                   "properties": {
                     "code": {
                       "type": "string",
-                      "example": "ALREADY_COMPLETED"
+                      "example": "WORKOUT_VERSION_CONFLICT"
                     }
                   },
                   "type": "object"
                 }
               }
             },
-            "description": "ALREADY_COMPLETED"
+            "description": "WORKOUT_VERSION_CONFLICT"
           }
         },
         "requestBody": {
@@ -1576,7 +1640,7 @@
         ],
         "x-source-request": "Path: workoutId · Body: {endedAt,expectedVersion}",
         "x-source-response": "{workoutId,status:COMPLETED,duration,totalSets,volume,prs,xp,growthDelta}",
-        "x-priority": "원본 REWARD-003 · P0 · MVP · 멱등 처리"
+        "x-priority": "원본 REWARD-003 · P0 · MVP · 부분 완료 및 멱등 처리"
       }
     },
     "/api/v1/tools/plate-calculator": {

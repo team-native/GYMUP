@@ -71,6 +71,23 @@ class WorkoutController(
         )
     }
 
+    @GetMapping("/workouts/active")
+    fun activeWorkout(request: HttpServletRequest): Map<String, Any?> {
+        val activeWorkout = domainStore.list(userId(request), "workout")
+            .firstOrNull { it.payload["status"] == "IN_PROGRESS" }
+            ?: throw ApiException(HttpStatus.NOT_FOUND, "ACTIVE_WORKOUT_NOT_FOUND", "Active workout not found")
+        val payload = activeWorkout.payload
+        return mapOf(
+            "workoutId" to (payload["workoutId"] ?: activeWorkout.id),
+            "status" to payload["status"],
+            "routineSnapshot" to payload["routine"],
+            "currentExerciseIndex" to payload.int("currentExerciseIndex"),
+            "sets" to payload.objectList("sets"),
+            "startedAt" to payload["startedAt"],
+            "version" to payload.int("version", 1),
+        )
+    }
+
     @PostMapping("/workouts/{workoutId}/sets")
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
@@ -236,15 +253,12 @@ class WorkoutController(
         if (body.int("expectedVersion") != payload.int("version", 1)) {
             throw ApiException(HttpStatus.CONFLICT, "WORKOUT_VERSION_CONFLICT", "Workout changed; reload its latest version")
         }
-        val exercises = payload.objectList("routine", "exercises")
         val sets = payload.objectList("sets")
-        if (exercises.any { exercise -> sets.count { it["exerciseId"].toString() == exercise["exerciseId"].toString() } < exercise.int("sets") }) {
-            throw ApiException(HttpStatus.BAD_REQUEST, "WORKOUT_INCOMPLETE", "Complete all planned exercises and sets")
-        }
 
         val endedAt = body["endedAt"]?.toString()?.let(::parseDateTime) ?: OffsetDateTime.now(ZoneOffset.UTC)
         val startedAt = parseDateTime(payload["startedAt"].toString())
-        val xp = sets.size * 10 + 50
+        val xp = if (sets.isEmpty()) 0 else sets.size * 10 + 50
+        val growthDelta = if (sets.isEmpty()) 0 else 10
         payload.putAll(
             mapOf(
                 "status" to "COMPLETED",
@@ -253,7 +267,7 @@ class WorkoutController(
                 "totalSets" to sets.size,
                 "volume" to volume(payload),
                 "xp" to xp,
-                "growthDelta" to 10,
+                "growthDelta" to growthDelta,
                 "completedAt" to endedAt.toString(),
             ),
         )
@@ -261,7 +275,7 @@ class WorkoutController(
         domainStore.save(
             userId,
             "reward",
-            mutableMapOf("workoutId" to workoutId, "xp" to xp, "growthDelta" to 10, "bonuses" to emptyList<Any>(), "grantedAt" to endedAt.toString()),
+            mutableMapOf("workoutId" to workoutId, "xp" to xp, "growthDelta" to growthDelta, "bonuses" to emptyList<Any>(), "grantedAt" to endedAt.toString()),
             workoutId,
         )
         return completion(payload)
@@ -378,8 +392,18 @@ class WorkoutController(
         )
     }
 
-    fun growthValue(userId: String): Int =
-        minOf(100, domainStore.list(userId, "workout").count { it.payload["status"] == "COMPLETED" } * 10)
+    fun growthValue(userId: String): Int = minOf(
+        100,
+        domainStore.list(userId, "workout").sumOf { workout ->
+            val payload = workout.payload
+            if (payload["status"] != "COMPLETED") {
+                0
+            } else {
+                (payload["growthDelta"] as? Number)?.toInt()
+                    ?: if (payload.objectList("sets").isNotEmpty()) 10 else 0
+            }
+        },
+    )
 
     private fun previousRecord(userId: String, exerciseId: String): Map<String, Any?>? =
         domainStore.list(userId, "workout")
