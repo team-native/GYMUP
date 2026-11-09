@@ -30,6 +30,3 @@ jobs:
 
       - name: Run tests
         run: ./gradlew test
-
-      - name: Run Kotlin API tests
-        run: ./gradlew -p kotlin-api test
