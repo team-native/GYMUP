@@ -117,10 +117,12 @@ class SetupController(
         val routine = ownedRoutine(userId, routineId)
         val removeIds = body.stringList("removeExerciseIds").toSet()
         val current = routine.payload.objectList("exercises")
-        val updates = body.objectList("update").associateBy { it["exerciseId"]?.toString() }
-        val exercises = current
-            .filterNot { it["exerciseId"]?.toString() in removeIds }
-            .map { exercise -> exercise + (updates[exercise["exerciseId"]?.toString()] ?: emptyMap()) } + body.objectList("add")
+        val exercises = RoutineExerciseMerger.merge(
+            current = current,
+            removeExerciseIds = removeIds,
+            updates = body.objectList("update"),
+            additions = body.objectList("add"),
+        )
         if (exercises.isEmpty()) {
             throw ApiException(HttpStatus.BAD_REQUEST, "EMPTY_ROUTINE", "A routine cannot be empty")
         }
